@@ -92,8 +92,6 @@ static int sc_pkcs15emu_oberthur_add_pubkey(struct sc_pkcs15_card *, unsigned, u
 static int sc_pkcs15emu_oberthur_add_cert(struct sc_pkcs15_card *, unsigned);
 static int sc_pkcs15emu_oberthur_add_data(struct sc_pkcs15_card *, unsigned, unsigned, int);
 
-int sc_pkcs15emu_oberthur_init_ex(struct sc_pkcs15_card *, struct sc_aid *, struct sc_pkcs15emu_opt *);
-
 static int sc_oberthur_parse_tokeninfo (struct sc_pkcs15_card *, unsigned char *, size_t, int);
 static int sc_oberthur_parse_containers (struct sc_pkcs15_card *, unsigned char *, size_t, int);
 static int sc_oberthur_parse_publicinfo (struct sc_pkcs15_card *, unsigned char *, size_t, int);
@@ -206,8 +204,10 @@ sc_oberthur_get_certificate_authority(struct sc_pkcs15_der *der, int *out_author
 	buf_mem.max = buf_mem.length = der->len;
 
 	bio = BIO_new(BIO_s_mem());
-	if(!bio)
+	if (!bio) {
+		free(buf_mem.data);
 		return SC_ERROR_OUT_OF_MEMORY;
+	}
 
 	BIO_set_mem_buf(bio, &buf_mem, BIO_NOCLOSE);
 	x = d2i_X509_bio(bio, 0);
@@ -686,7 +686,7 @@ sc_pkcs15emu_oberthur_add_cert(struct sc_pkcs15_card *p15card, unsigned int file
 
 	rv = sc_pkcs15emu_add_x509_cert(p15card, &cobj, &cinfo);
 
-	SC_FUNC_RETURN(p15card->card->ctx, SC_LOG_DEBUG_NORMAL, rv);
+	LOG_FUNC_RETURN(p15card->card->ctx, rv);
 }
 
 
@@ -901,7 +901,7 @@ sc_pkcs15emu_oberthur_add_data(struct sc_pkcs15_card *p15card,
 
 	rv = sc_pkcs15emu_add_data_object(p15card, &dobj, &dinfo);
 
-	SC_FUNC_RETURN(p15card->card->ctx, SC_LOG_DEBUG_NORMAL, rv);
+	LOG_FUNC_RETURN(p15card->card->ctx, rv);
 }
 
 
@@ -1041,26 +1041,20 @@ oberthur_detect_card(struct sc_pkcs15_card * p15card)
 
 	SC_FUNC_CALLED(card->ctx, SC_LOG_DEBUG_VERBOSE);
 	if (p15card->card->type != SC_CARD_TYPE_OBERTHUR_64K)
-		SC_FUNC_RETURN(p15card->card->ctx, SC_LOG_DEBUG_NORMAL, SC_ERROR_WRONG_CARD);
-	SC_FUNC_RETURN(p15card->card->ctx, SC_LOG_DEBUG_NORMAL, SC_SUCCESS);
+		LOG_FUNC_RETURN(p15card->card->ctx, SC_ERROR_WRONG_CARD);
+	LOG_FUNC_RETURN(p15card->card->ctx, SC_SUCCESS);
 }
 
 
 int
-sc_pkcs15emu_oberthur_init_ex(struct sc_pkcs15_card * p15card, struct sc_aid *aid,
-				   struct sc_pkcs15emu_opt * opts)
+sc_pkcs15emu_oberthur_init_ex(struct sc_pkcs15_card * p15card, struct sc_aid *aid)
 {
 	int rv;
 
 	LOG_FUNC_CALLED(p15card->card->ctx);
-	if (opts && opts->flags & SC_PKCS15EMU_FLAGS_NO_CHECK)   {
+	rv = oberthur_detect_card(p15card);
+	if (!rv)
 		rv = sc_pkcs15emu_oberthur_init(p15card);
-	}
-	else {
-		rv = oberthur_detect_card(p15card);
-		if (!rv)
-			rv = sc_pkcs15emu_oberthur_init(p15card);
-	}
 
 	LOG_FUNC_RETURN(p15card->card->ctx, rv);
 }

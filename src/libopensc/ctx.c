@@ -34,10 +34,13 @@
 #include <windows.h>
 #include <winreg.h>
 #include <direct.h>
+#include <io.h>
 #endif
 
 #include "common/libscdl.h"
+#include "common/compat_strlcpy.h"
 #include "internal.h"
+#include "sc-ossl-compat.h"
 
 static int ignored_reader(sc_context_t *ctx, sc_reader_t *reader)
 {
@@ -108,7 +111,6 @@ static const struct _sc_driver_entry internal_card_drivers[] = {
 #endif
 	{ "belpic",	(void *(*)(void)) sc_get_belpic_driver },
 	{ "incrypto34", (void *(*)(void)) sc_get_incrypto34_driver },
-	{ "acos5",	(void *(*)(void)) sc_get_acos5_driver },
 	{ "akis",	(void *(*)(void)) sc_get_akis_driver },
 #ifdef ENABLE_OPENSSL
 	{ "entersafe",(void *(*)(void)) sc_get_entersafe_driver },
@@ -125,9 +127,15 @@ static const struct _sc_driver_entry internal_card_drivers[] = {
 	{ "masktech",	(void *(*)(void)) sc_get_masktech_driver },
 	{ "atrust-acos",(void *(*)(void)) sc_get_atrust_acos_driver },
 	{ "westcos",	(void *(*)(void)) sc_get_westcos_driver },
+	{ "esteid2018",	(void *(*)(void)) sc_get_esteid2018_driver },
+	{ "idprime",	(void *(*)(void)) sc_get_idprime_driver },
+#if defined(ENABLE_SM) && defined(ENABLE_OPENPACE)
+	{ "edo",        (void *(*)(void)) sc_get_edo_driver },
+#endif
 
 /* Here should be placed drivers that need some APDU transactions in the
  * driver's `match_card()` function. */
+	{ "coolkey",	(void *(*)(void)) sc_get_coolkey_driver },
 	/* MUSCLE card applet returns 9000 on whatever AID is selected, see
 	 * https://github.com/JavaCardOS/MuscleCard-Applet/blob/master/musclecard/src/com/musclecard/CardEdge/CardEdge.java#L326
 	 * put the muscle driver first to cope with this bug. */
@@ -144,8 +152,8 @@ static const struct _sc_driver_entry internal_card_drivers[] = {
 #endif
 	{ "openpgp",	(void *(*)(void)) sc_get_openpgp_driver },
 	{ "jpki",	(void *(*)(void)) sc_get_jpki_driver },
-	{ "coolkey",	(void *(*)(void)) sc_get_coolkey_driver },
 	{ "npa",	(void *(*)(void)) sc_get_npa_driver },
+	{ "cac1",	(void *(*)(void)) sc_get_cac1_driver },
 	/* The default driver should be last, as it handles all the
 	 * unrecognized cards. */
 	{ "default",	(void *(*)(void)) sc_get_default_driver },
@@ -177,9 +185,9 @@ sc_ctx_win32_get_config_value(const char *name_env,
 		return SC_ERROR_INVALID_ARGUMENTS;
 
 	if (name_env)   {
-		char *value = value = getenv(name_env);
+		char *value = getenv(name_env);
 		if (value) {
-			if (strlen(value) < *out_len)
+			if (strlen(value) > *out_len)
 				return SC_ERROR_NOT_ENOUGH_MEMORY;
 			memcpy(out, value, strlen(value));
 			*out_len = strlen(value);
@@ -393,6 +401,10 @@ load_parameters(sc_context_t *ctx, scconf_block *block, struct _sc_ctx_options *
 				ctx->flags & SC_CTX_FLAG_DISABLE_POPUPS))
 		ctx->flags |= SC_CTX_FLAG_DISABLE_POPUPS;
 
+	if (scconf_get_bool (block, "disable_colors",
+				ctx->flags & SC_CTX_FLAG_DISABLE_COLORS))
+		ctx->flags |= SC_CTX_FLAG_DISABLE_COLORS;
+
 	if (scconf_get_bool (block, "enable_default_driver",
 				ctx->flags & SC_CTX_FLAG_ENABLE_DEFAULT_DRIVER))
 		ctx->flags |= SC_CTX_FLAG_ENABLE_DEFAULT_DRIVER;
@@ -452,6 +464,10 @@ static void *load_dynamic_driver(sc_context_t *ctx, void **dll, const char *name
 	const char *(*modversion)(void) = NULL;
 	const char *(**tmodv)(void) = &modversion;
 
+	if (dll == NULL) {
+		sc_log(ctx, "No dll parameter specified");
+		return NULL;
+	}
 	if (name == NULL) { /* should not occur, but... */
 		sc_log(ctx, "No module specified");
 		return NULL;
@@ -481,8 +497,8 @@ static void *load_dynamic_driver(sc_context_t *ctx, void **dll, const char *name
 		sc_dlclose(handle);
 		return NULL;
 	}
-	if (dll)
-		*dll = handle;
+
+	*dll = handle;
 	sc_log(ctx, "successfully loaded card driver '%s'", name);
 	return modinit(name);
 }
@@ -814,6 +830,7 @@ int sc_context_create(sc_context_t **ctx_out, const sc_context_param_t *parm)
 	set_defaults(ctx, &opts);
 
 	if (0 != list_init(&ctx->readers)) {
+		del_drvs(&opts);
 		sc_release_context(ctx);
 		return SC_ERROR_OUT_OF_MEMORY;
 	}
@@ -823,9 +840,16 @@ int sc_context_create(sc_context_t **ctx_out, const sc_context_param_t *parm)
 		ctx->thread_ctx = parm->thread_ctx;
 	r = sc_mutex_create(ctx, &ctx->mutex);
 	if (r != SC_SUCCESS) {
+		del_drvs(&opts);
 		sc_release_context(ctx);
 		return r;
 	}
+
+#if defined(ENABLE_OPENSSL) && defined(OPENSSL_SECURE_MALLOC_SIZE)
+	if (!CRYPTO_secure_malloc_initialized()) {
+		CRYPTO_secure_malloc_init(OPENSSL_SECURE_MALLOC_SIZE, OPENSSL_SECURE_MALLOC_SIZE/8);
+	}
+#endif
 
 	process_config_file(ctx, &opts);
 	sc_log(ctx, "==================================="); /* first thing in the log */
@@ -843,6 +867,7 @@ int sc_context_create(sc_context_t **ctx_out, const sc_context_param_t *parm)
 
 	r = ctx->reader_driver->ops->init(ctx);
 	if (r != SC_SUCCESS)   {
+		del_drvs(&opts);
 		sc_release_context(ctx);
 		return r;
 	}
@@ -868,7 +893,7 @@ int sc_context_create(sc_context_t **ctx_out, const sc_context_param_t *parm)
 /* Used by minidriver to pass in provided handles to reader-pcsc */
 int sc_ctx_use_reader(sc_context_t *ctx, void *pcsc_context_handle, void *pcsc_card_handle)
 {
-	SC_FUNC_CALLED(ctx, SC_LOG_DEBUG_NORMAL);
+	LOG_FUNC_CALLED(ctx);
 	if (ctx->reader_driver->ops->use_reader != NULL)
 		return ctx->reader_driver->ops->use_reader(ctx, pcsc_context_handle, pcsc_card_handle);
 
@@ -878,7 +903,7 @@ int sc_ctx_use_reader(sc_context_t *ctx, void *pcsc_context_handle, void *pcsc_c
 /* Following two are only implemented with internal PC/SC and don't consume a reader object */
 int sc_cancel(sc_context_t *ctx)
 {
-	SC_FUNC_CALLED(ctx, SC_LOG_DEBUG_NORMAL);
+	LOG_FUNC_CALLED(ctx);
 	if (ctx->reader_driver->ops->cancel != NULL)
 		return ctx->reader_driver->ops->cancel(ctx);
 
@@ -888,7 +913,7 @@ int sc_cancel(sc_context_t *ctx)
 
 int sc_wait_for_event(sc_context_t *ctx, unsigned int event_mask, sc_reader_t **event_reader, unsigned int *event, int timeout, void **reader_states)
 {
-	SC_FUNC_CALLED(ctx, SC_LOG_DEBUG_NORMAL);
+	LOG_FUNC_CALLED(ctx);
 	if (ctx->reader_driver->ops->wait_for_event != NULL)
 		return ctx->reader_driver->ops->wait_for_event(ctx, event_mask, event_reader, event, timeout, reader_states);
 
@@ -978,9 +1003,7 @@ int sc_get_cache_dir(sc_context_t *ctx, char *buf, size_t bufsize)
 	conf_block = sc_get_conf_block(ctx, "framework", "pkcs15", 1);
 	cache_dir = scconf_get_str(conf_block, "file_cache_dir", NULL);
 	if (cache_dir != NULL) {
-		if (bufsize <= strlen(cache_dir))
-			return SC_ERROR_BUFFER_TOO_SMALL;
-		strcpy(buf, cache_dir);
+		strlcpy(buf, cache_dir, bufsize);
 		return SC_SUCCESS;
 	}
 

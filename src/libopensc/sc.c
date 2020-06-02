@@ -34,6 +34,7 @@
 #include <openssl/crypto.h>     /* for OPENSSL_cleanse */
 #endif
 
+
 #include "internal.h"
 
 #ifdef PACKAGE_VERSION
@@ -42,6 +43,19 @@ static const char *sc_version = PACKAGE_VERSION;
 static const char *sc_version = "(undef)";
 #endif
 
+#ifdef _WIN32
+#include <windows.h>
+#define PAGESIZE 0
+#else
+#include <sys/mman.h>
+#include <limits.h>
+#include <unistd.h>
+#ifndef PAGESIZE
+#define PAGESIZE 0
+#endif
+#endif
+static size_t page_size = PAGESIZE;
+
 const char *sc_get_version(void)
 {
     return sc_version;
@@ -49,77 +63,98 @@ const char *sc_get_version(void)
 
 int sc_hex_to_bin(const char *in, u8 *out, size_t *outlen)
 {
-	int err = SC_SUCCESS;
-	size_t left, count = 0, in_len;
-
+	const char *sc_hex_to_bin_separators = " :";
 	if (in == NULL || out == NULL || outlen == NULL) {
 		return SC_ERROR_INVALID_ARGUMENTS;
 	}
-	left = *outlen;
-	in_len = strlen(in);
 
-	while (*in != '\0') {
-		int byte = 0, nybbles = 2;
-
-		while (nybbles-- && *in && *in != ':' && *in != ' ') {
-			char c;
-			byte <<= 4;
-			c = *in++;
-			if ('0' <= c && c <= '9')
-				c -= '0';
-			else
-			if ('a' <= c && c <= 'f')
-				c = c - 'a' + 10;
-			else
-			if ('A' <= c && c <= 'F')
-				c = c - 'A' + 10;
-			else {
-				err = SC_ERROR_INVALID_ARGUMENTS;
-				goto out;
-			}
-			byte |= c;
+	int byte_needs_nibble = 0;
+	int r = SC_SUCCESS;
+	size_t left = *outlen;
+	u8 byte = 0;
+	while (*in != '\0' && 0 != left) {
+		char c = *in++;
+		u8 nibble;
+		if      ('0' <= c && c <= '9')
+			nibble = c - '0';
+		else if ('a' <= c && c <= 'f')
+			nibble = c - 'a' + 10;
+		else if ('A' <= c && c <= 'F')
+			nibble = c - 'A' + 10;
+		else {
+			if (strchr(sc_hex_to_bin_separators, (int) c))
+				continue;
+			r = SC_ERROR_INVALID_ARGUMENTS;
+			goto err;
 		}
 
-		/* Detect premature end of string before byte is complete */
-		if (in_len > 1 && *in == '\0' && nybbles >= 0) {
-			err = SC_ERROR_INVALID_ARGUMENTS;
-			break;
+		if (byte_needs_nibble) {
+			byte |= nibble;
+			*out++ = (u8) byte;
+			left--;
+			byte_needs_nibble = 0;
+		} else {
+			byte  = nibble << 4;
+			byte_needs_nibble = 1;
 		}
-
-		if (*in == ':' || *in == ' ')
-			in++;
-		if (left <= 0) {
-			err = SC_ERROR_BUFFER_TOO_SMALL;
-			break;
-		}
-		out[count++] = (u8) byte;
-		left--;
 	}
 
-out:
-	*outlen = count;
-	return err;
+	if (left == *outlen && 1 == byte_needs_nibble && 0 != left) {
+		/* no output written so far, but we have a valid nibble in the upper
+		 * bits. Allow this special case. */
+		*out = (u8) byte>>4;
+		left--;
+		byte_needs_nibble = 0;
+	}
+
+	/* for ease of implementation we only accept completely hexed bytes. */
+	if (byte_needs_nibble) {
+		r = SC_ERROR_INVALID_ARGUMENTS;
+		goto err;
+	}
+
+	/* skip all trailing separators to see if we missed something */
+	while (*in != '\0') {
+		if (NULL == strchr(sc_hex_to_bin_separators, (int) *in))
+			break;
+		in++;
+	}
+	if (*in != '\0') {
+		r = SC_ERROR_BUFFER_TOO_SMALL;
+		goto err;
+	}
+
+err:
+	*outlen -= left;
+	return r;
 }
 
 int sc_bin_to_hex(const u8 *in, size_t in_len, char *out, size_t out_len,
-		  int in_sep)
+				  int in_sep)
 {
-	unsigned int	n, sep_len;
-	char		*pos, *end, sep;
-
-	sep = (char)in_sep;
-	sep_len = sep > 0 ? 1 : 0;
-	pos = out;
-	end = out + out_len;
-	for (n = 0; n < in_len; n++) {
-		if (pos + 3 + sep_len >= end)
-			return SC_ERROR_BUFFER_TOO_SMALL;
-		if (n && sep_len)
-			*pos++ = sep;
-		sprintf(pos, "%02x", in[n]);
-		pos += 2;
+	if (in == NULL || out == NULL) {
+		return SC_ERROR_INVALID_ARGUMENTS;
 	}
-	*pos = '\0';
+
+	if (in_sep > 0) {
+		if (out_len < in_len*3 || out_len < 1)
+			return SC_ERROR_BUFFER_TOO_SMALL;
+	} else {
+		if (out_len < in_len*2 + 1)
+			return SC_ERROR_BUFFER_TOO_SMALL;
+	}
+
+	const char hex[] = "0123456789abcdef";
+	while (in_len) {
+		unsigned char value = *in++;
+		*out++ = hex[(value >> 4) & 0xF];
+		*out++ = hex[ value       & 0xF];
+		in_len--;
+		if (in_len && in_sep > 0)
+			*out++ = (char)in_sep;
+	}
+	*out = '\0';
+
 	return SC_SUCCESS;
 }
 
@@ -170,21 +205,36 @@ unsigned long bebytes2ulong(const u8 *buf)
 {
 	if (buf == NULL)
 		return 0UL;
-	return (unsigned long) (buf[0] << 24 | buf[1] << 16 | buf[2] << 8 | buf[3]);
+	return (unsigned long)buf[0] << 24
+		| (unsigned long)buf[1] << 16
+		| (unsigned long)buf[2] << 8
+		| (unsigned long)buf[3];
 }
 
 unsigned short bebytes2ushort(const u8 *buf)
 {
 	if (buf == NULL)
 		return 0U;
-	return (unsigned short) (buf[0] << 8 | buf[1]);
+	return (unsigned short)buf[0] << 8
+		| (unsigned short)buf[1];
 }
 
 unsigned short lebytes2ushort(const u8 *buf)
 {
 	if (buf == NULL)
 		return 0U;
-	return (unsigned short)buf[1] << 8 | (unsigned short)buf[0];
+	return (unsigned short)buf[1] << 8
+		| (unsigned short)buf[0];
+}
+
+unsigned long lebytes2ulong(const u8 *buf)
+{
+	if (buf == NULL)
+		return 0UL;
+	return (unsigned long)buf[3] << 24
+		| (unsigned long)buf[2] << 16
+		| (unsigned long)buf[1] << 8
+		| (unsigned long)buf[0];
 }
 
 void sc_init_oid(struct sc_object_id *oid)
@@ -382,7 +432,7 @@ int sc_path_print(char *buf, size_t buflen, const sc_path_t *path)
 	if (buf == NULL || path == NULL)
 		return SC_ERROR_INVALID_ARGUMENTS;
 
-	if (buflen < path->len * 2 + path->aid.len * 2 + 1)
+	if (buflen < path->len * 2 + path->aid.len * 2 + 3)
 		return SC_ERROR_BUFFER_TOO_SMALL;
 
 	buf[0] = '\0';
@@ -658,7 +708,7 @@ int sc_file_set_prop_attr(sc_file_t *file, const u8 *prop_attr,
 		return SC_ERROR_INVALID_ARGUMENTS;
 	}
 
-	if (prop_attr == NULL) {
+	if (prop_attr == NULL || prop_attr_len == 0) {
 		if (file->prop_attr != NULL)
 			free(file->prop_attr);
 		file->prop_attr = NULL;
@@ -688,7 +738,7 @@ int sc_file_set_type_attr(sc_file_t *file, const u8 *type_attr,
 		return SC_ERROR_INVALID_ARGUMENTS;
 	}
 
-	if (type_attr == NULL) {
+	if (type_attr == NULL || type_attr_len == 0) {
 		if (file->type_attr != NULL)
 			free(file->type_attr);
 		file->type_attr = NULL;
@@ -719,7 +769,7 @@ int sc_file_set_content(sc_file_t *file, const u8 *content,
 		return SC_ERROR_INVALID_ARGUMENTS;
 	}
 
-	if (content == NULL) {
+	if (content == NULL || content_len == 0) {
 		if (file->encoded_content != NULL)
 			free(file->encoded_content);
 		file->encoded_content = NULL;
@@ -826,10 +876,65 @@ int _sc_parse_atr(sc_reader_t *reader)
 	return SC_SUCCESS;
 }
 
+static void init_page_size()
+{
+	if (page_size == 0) {
+#ifdef _WIN32
+		SYSTEM_INFO system_info;
+		GetSystemInfo(&system_info);
+		page_size = system_info.dwPageSize;
+#else
+		page_size = sysconf(_SC_PAGESIZE);
+		if ((long) page_size < 0) {
+			page_size = 0;
+		}
+#endif
+	}
+}
+
+void *sc_mem_secure_alloc(size_t len)
+{
+	void *p;
+
+	init_page_size();
+	if (page_size > 0) {
+		size_t pages = (len + page_size - 1) / page_size;
+		len = pages * page_size;
+	}
+
+	p = calloc(1, len);
+	if (p == NULL) {
+		return NULL;
+	}
+#ifdef _WIN32
+	VirtualLock(p, len);
+#else
+	mlock(p, len);
+#endif
+
+	return p;
+}
+
+void sc_mem_secure_free(void *ptr, size_t len)
+{
+#ifdef _WIN32
+	VirtualUnlock(ptr, len);
+#else
+	munlock(ptr, len);
+#endif
+	free(ptr);
+}
+
 void sc_mem_clear(void *ptr, size_t len)
 {
 	if (len > 0)   {
-#ifdef ENABLE_OPENSSL
+#ifdef HAVE_MEMSET_S
+		memset_s(ptr, len, 0, len);
+#elif _WIN32
+		SecureZeroMemory(ptr, len);
+#elif HAVE_EXPLICIT_BZERO
+		explicit_bzero(ptr, len);
+#elif ENABLE_OPENSSL
 		OPENSSL_cleanse(ptr, len);
 #else
 		memset(ptr, 0, len);

@@ -436,9 +436,6 @@ authentic_init_oberthur_authentic_3_2(struct sc_card *card)
 
 	flags = AUTHENTIC_CARD_DEFAULT_FLAGS;
 
-	_sc_card_add_rsa_alg(card, 1024, flags, 0x10001);
-	_sc_card_add_rsa_alg(card, 2048, flags, 0x10001);
-
 	card->caps = SC_CARD_CAP_RNG;
 	card->caps |= SC_CARD_CAP_APDU_EXT;
 	card->caps |= SC_CARD_CAP_USE_FCI_AC;
@@ -454,6 +451,9 @@ authentic_init_oberthur_authentic_3_2(struct sc_card *card)
 
 	rv = authentic_select_mf(card, NULL);
 	LOG_TEST_RET(ctx, rv, "MF selection error");
+
+	_sc_card_add_rsa_alg(card, 1024, flags, 0x10001);
+	_sc_card_add_rsa_alg(card, 2048, flags, 0x10001);
 
 	LOG_FUNC_RETURN(ctx, rv);
 }
@@ -515,9 +515,8 @@ authentic_erase_binary(struct sc_card *card, unsigned int offs, size_t count, un
 
 	rv = sc_update_binary(card, offs, buf_zero, count, flags);
 	free(buf_zero);
-	LOG_TEST_RET(ctx, rv, "'ERASE BINARY' failed");
 
-	LOG_FUNC_RETURN(ctx, SC_SUCCESS);
+	LOG_FUNC_RETURN(ctx, rv);
 }
 
 
@@ -819,7 +818,7 @@ authentic_read_binary(struct sc_card *card, unsigned int idx,
 	struct sc_context *ctx = card->ctx;
 	struct sc_apdu apdu;
 	size_t sz, rest, ret_count = 0;
-	int rv = SC_SUCCESS;
+	int rv = SC_ERROR_INVALID_ARGUMENTS;
 
 	LOG_FUNC_CALLED(ctx);
 	sc_log(ctx,
@@ -865,7 +864,7 @@ authentic_write_binary(struct sc_card *card, unsigned int idx,
 	struct sc_context *ctx = card->ctx;
 	struct sc_apdu apdu;
 	size_t sz, rest;
-	int rv = SC_SUCCESS;
+	int rv = SC_ERROR_INVALID_ARGUMENTS;
 
 	LOG_FUNC_CALLED(ctx);
 	sc_log(ctx,
@@ -908,7 +907,7 @@ authentic_update_binary(struct sc_card *card, unsigned int idx,
 	struct sc_context *ctx = card->ctx;
 	struct sc_apdu apdu;
 	size_t sz, rest;
-	int rv = SC_SUCCESS;
+	int rv = SC_ERROR_INVALID_ARGUMENTS;
 
 	LOG_FUNC_CALLED(ctx);
 	sc_log(ctx,
@@ -1709,22 +1708,22 @@ authentic_manage_sdo_encode_prvkey(struct sc_card *card, struct sc_pkcs15_prkey 
 	rsa = prvkey->u.rsa;
 	/* Encode private RSA key part */
 	rv = authentic_update_blob(ctx, AUTHENTIC_TAG_RSA_PRIVATE_P, rsa.p.data, rsa.p.len, &blob, &blob_len);
-	LOG_TEST_RET(ctx, rv, "SDO RSA P encode error");
+	LOG_TEST_GOTO_ERR(ctx, rv, "SDO RSA P encode error");
 
 	rv = authentic_update_blob(ctx, AUTHENTIC_TAG_RSA_PRIVATE_Q, rsa.q.data, rsa.q.len, &blob, &blob_len);
-	LOG_TEST_RET(ctx, rv, "SDO RSA Q encode error");
+	LOG_TEST_GOTO_ERR(ctx, rv, "SDO RSA Q encode error");
 
 	rv = authentic_update_blob(ctx, AUTHENTIC_TAG_RSA_PRIVATE_PQ, rsa.iqmp.data, rsa.iqmp.len, &blob, &blob_len);
-	LOG_TEST_RET(ctx, rv, "SDO RSA PQ encode error");
+	LOG_TEST_GOTO_ERR(ctx, rv, "SDO RSA PQ encode error");
 
 	rv = authentic_update_blob(ctx, AUTHENTIC_TAG_RSA_PRIVATE_DP1, rsa.dmp1.data, rsa.dmp1.len, &blob, &blob_len);
-	LOG_TEST_RET(ctx, rv, "SDO RSA DP1 encode error");
+	LOG_TEST_GOTO_ERR(ctx, rv, "SDO RSA DP1 encode error");
 
 	rv = authentic_update_blob(ctx, AUTHENTIC_TAG_RSA_PRIVATE_DQ1, rsa.dmq1.data, rsa.dmq1.len, &blob, &blob_len);
-	LOG_TEST_RET(ctx, rv, "SDO RSA DQ1 encode error");
+	LOG_TEST_GOTO_ERR(ctx, rv, "SDO RSA DQ1 encode error");
 
 	rv = authentic_update_blob(ctx, AUTHENTIC_TAG_RSA_PRIVATE, blob, blob_len, &blob01, &blob01_len);
-	LOG_TEST_RET(ctx, rv, "SDO RSA Private encode error");
+	LOG_TEST_GOTO_ERR(ctx, rv, "SDO RSA Private encode error");
 
 	free (blob);
 	blob = NULL;
@@ -1735,24 +1734,27 @@ authentic_manage_sdo_encode_prvkey(struct sc_card *card, struct sc_pkcs15_prkey 
 	       "modulus.len:%"SC_FORMAT_LEN_SIZE_T"u blob_len:%"SC_FORMAT_LEN_SIZE_T"u",
 	       rsa.modulus.len, blob_len);
 	rv = authentic_update_blob(ctx, AUTHENTIC_TAG_RSA_PUBLIC_MODULUS, rsa.modulus.data, rsa.modulus.len, &blob, &blob_len);
-	LOG_TEST_RET(ctx, rv, "SDO RSA Modulus encode error");
+	LOG_TEST_GOTO_ERR(ctx, rv, "SDO RSA Modulus encode error");
 
 	sc_log(ctx,
 	       "exponent.len:%"SC_FORMAT_LEN_SIZE_T"u blob_len:%"SC_FORMAT_LEN_SIZE_T"u",
 	       rsa.exponent.len, blob_len);
 	rv = authentic_update_blob(ctx, AUTHENTIC_TAG_RSA_PUBLIC_EXPONENT, rsa.exponent.data, rsa.exponent.len, &blob, &blob_len);
-	LOG_TEST_RET(ctx, rv, "SDO RSA Exponent encode error");
+	LOG_TEST_GOTO_ERR(ctx, rv, "SDO RSA Exponent encode error");
 
 	rv = authentic_update_blob(ctx, AUTHENTIC_TAG_RSA_PUBLIC, blob, blob_len, &blob01, &blob01_len);
-	LOG_TEST_RET(ctx, rv, "SDO RSA Private encode error");
+	LOG_TEST_GOTO_ERR(ctx, rv, "SDO RSA Private encode error");
 
 	free (blob);
+	blob = NULL;
+	blob_len = 0;
 
 	rv = authentic_update_blob(ctx, AUTHENTIC_TAG_RSA, blob01, blob01_len, out, out_len);
-	LOG_TEST_RET(ctx, rv, "SDO RSA encode error");
+	LOG_TEST_GOTO_ERR(ctx, rv, "SDO RSA encode error");
 
+err:
 	free(blob01);
-
+	free(blob);
 	LOG_FUNC_RETURN(ctx, rv);
 }
 
@@ -1775,28 +1777,28 @@ authentic_manage_sdo_encode(struct sc_card *card, struct sc_authentic_sdo *sdo, 
 
 	rv = authentic_update_blob(ctx, AUTHENTIC_TAG_DOCP_MECH, &sdo->docp.mech, sizeof(sdo->docp.mech),
 			&data, &data_len);
-	LOG_TEST_RET(ctx, rv, "DOCP MECH encode error");
+	LOG_TEST_GOTO_ERR(ctx, rv, "DOCP MECH encode error");
 
 	rv = authentic_update_blob(ctx, AUTHENTIC_TAG_DOCP_ID, &sdo->docp.id, sizeof(sdo->docp.id),
 			&data, &data_len);
-	LOG_TEST_RET(ctx, rv, "DOCP ID encode error");
+	LOG_TEST_GOTO_ERR(ctx, rv, "DOCP ID encode error");
 
 	if (cmd == SC_CARDCTL_AUTHENTIC_SDO_CREATE)   {
 		rv = authentic_update_blob(ctx, AUTHENTIC_TAG_DOCP_ACLS, sdo->docp.acl_data, sdo->docp.acl_data_len,
 				&data, &data_len);
-		LOG_TEST_RET(ctx, rv, "DOCP ACLs encode error");
+		LOG_TEST_GOTO_ERR(ctx, rv, "DOCP ACLs encode error");
 
 		if (sdo->docp.security_parameter)  {
 			rv = authentic_update_blob(ctx, AUTHENTIC_TAG_DOCP_SCP,
 					&sdo->docp.security_parameter, sizeof(sdo->docp.security_parameter),
 					&data, &data_len);
-			LOG_TEST_RET(ctx, rv, "DOCP ACLs encode error");
+			LOG_TEST_GOTO_ERR(ctx, rv, "DOCP ACLs encode error");
 		}
 		if (sdo->docp.usage_counter[0] || sdo->docp.usage_counter[1])  {
 			rv = authentic_update_blob(ctx, AUTHENTIC_TAG_DOCP_USAGE_COUNTER,
 					sdo->docp.usage_counter, sizeof(sdo->docp.usage_counter),
 					&data, &data_len);
-			LOG_TEST_RET(ctx, rv, "DOCP ACLs encode error");
+			LOG_TEST_GOTO_ERR(ctx, rv, "DOCP ACLs encode error");
 		}
 	}
 	else if (cmd == SC_CARDCTL_AUTHENTIC_SDO_STORE)   {
@@ -1806,10 +1808,10 @@ authentic_manage_sdo_encode(struct sc_card *card, struct sc_authentic_sdo *sdo, 
 				|| sdo->docp.mech == AUTHENTIC_MECH_CRYPTO_RSA1792
 				|| sdo->docp.mech == AUTHENTIC_MECH_CRYPTO_RSA2048)   {
 			rv = authentic_manage_sdo_encode_prvkey(card, sdo->data.prvkey, &data, &data_len);
-			LOG_TEST_RET(ctx, rv, "SDO RSA encode error");
+			LOG_TEST_GOTO_ERR(ctx, rv, "SDO RSA encode error");
 		}
 		else  {
-			LOG_TEST_RET(ctx, SC_ERROR_NOT_SUPPORTED, "Cryptographic object unsupported for encoding");
+			LOG_TEST_GOTO_ERR(ctx, SC_ERROR_NOT_SUPPORTED, "Cryptographic object unsupported for encoding");
 		}
 	}
 	else if (cmd == SC_CARDCTL_AUTHENTIC_SDO_GENERATE)   {
@@ -1817,21 +1819,23 @@ authentic_manage_sdo_encode(struct sc_card *card, struct sc_authentic_sdo *sdo, 
 		        rv = authentic_update_blob(ctx, AUTHENTIC_TAG_RSA_PUBLIC_EXPONENT,
 					sdo->data.prvkey->u.rsa.exponent.data, sdo->data.prvkey->u.rsa.exponent.len,
 					&data, &data_len);
-		        LOG_TEST_RET(ctx, rv, "SDO RSA Exponent encode error");
+		        LOG_TEST_GOTO_ERR(ctx, rv, "SDO RSA Exponent encode error");
 		}
 
 		data_tag = AUTHENTIC_TAG_RSA_GENERATE_DATA;
 	}
 	else if (cmd != SC_CARDCTL_AUTHENTIC_SDO_DELETE)   {
-		LOG_TEST_RET(ctx, SC_ERROR_INVALID_DATA, "Invalid SDO operation");
+		LOG_TEST_GOTO_ERR(ctx, SC_ERROR_INVALID_DATA, "Invalid SDO operation");
 	}
 
 	rv = authentic_update_blob(ctx, data_tag, data, data_len, out, out_len);
-	LOG_TEST_RET(ctx, rv, "SDO DOCP encode error");
-
-	free(data);
+	LOG_TEST_GOTO_ERR(ctx, rv, "SDO DOCP encode error");
 
 	sc_log_hex(ctx, "encoded SDO operation data", *out, *out_len);
+
+err:
+	free(data);
+
 	LOG_FUNC_RETURN(ctx, rv);
 }
 
@@ -1867,7 +1871,7 @@ authentic_manage_sdo_generate(struct sc_card *card, struct sc_authentic_sdo *sdo
 	LOG_TEST_RET(ctx, rv, "authentic_sdo_create() SDO put data error");
 
 	rv = authentic_decode_pubkey_rsa(ctx, apdu.resp, apdu.resplen, &sdo->data.prvkey);
-	SC_TEST_RET(card->ctx, SC_LOG_DEBUG_NORMAL, rv, "cannot decode public key");
+	LOG_TEST_RET(card->ctx, rv, "cannot decode public key");
 
 	free(data);
 	LOG_FUNC_RETURN(ctx, rv);

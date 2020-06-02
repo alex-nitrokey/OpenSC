@@ -96,7 +96,7 @@ buf_spec(CK_VOID_PTR buf_addr, CK_ULONG buf_len)
 #if !defined(_MSC_VER) || _MSC_VER >= 1800
 	const size_t prwidth = sizeof(CK_VOID_PTR) * 2;
 
-	sprintf(ret, "%0*"PRIxPTR" / %lu", (int) prwidth, (uintptr_t) buf_addr,
+	sprintf(ret, "%0*"PRIxPTR" / %ld", (int) prwidth, (uintptr_t) buf_addr,
 		buf_len);
 #else
 	if (sizeof(CK_VOID_PTR) == 4)
@@ -319,6 +319,10 @@ static enum_specs ck_mec_s[] = {
   { CKM_DSA_KEY_PAIR_GEN         , "CKM_DSA_KEY_PAIR_GEN         " },
   { CKM_DSA                      , "CKM_DSA                      " },
   { CKM_DSA_SHA1                 , "CKM_DSA_SHA1                 " },
+  { CKM_DSA_SHA224               , "CKM_DSA_SHA224               " },
+  { CKM_DSA_SHA256               , "CKM_DSA_SHA256               " },
+  { CKM_DSA_SHA384               , "CKM_DSA_SHA384               " },
+  { CKM_DSA_SHA512               , "CKM_DSA_SHA512               " },
   { CKM_DH_PKCS_KEY_PAIR_GEN     , "CKM_DH_PKCS_KEY_PAIR_GEN     " },
   { CKM_DH_PKCS_DERIVE           , "CKM_DH_PKCS_DERIVE           " },
   { CKM_X9_42_DH_KEY_PAIR_GEN    , "CKM_X9_42_DH_KEY_PAIR_GEN    " },
@@ -346,6 +350,7 @@ static enum_specs ck_mec_s[] = {
   { CKM_DES3_MAC                 , "CKM_DES3_MAC                 " },
   { CKM_DES3_MAC_GENERAL         , "CKM_DES3_MAC_GENERAL         " },
   { CKM_DES3_CBC_PAD             , "CKM_DES3_CBC_PAD             " },
+  { CKM_DES3_CMAC                , "CKM_DES3_CMAC                " },
   { CKM_CDMF_KEY_GEN             , "CKM_CDMF_KEY_GEN             " },
   { CKM_CDMF_ECB                 , "CKM_CDMF_ECB                 " },
   { CKM_CDMF_CBC                 , "CKM_CDMF_CBC                 " },
@@ -498,11 +503,18 @@ static enum_specs ck_mec_s[] = {
   { CKM_AES_CTR                  , "CKM_AES_CTR                  " },
   { CKM_AES_GCM                  , "CKM_AES_GCM                  " },
   { CKM_AES_CCM                  , "CKM_AES_CCM                  " },
+  { CKM_AES_CMAC                 , "CKM_AES_CMAC                 " },
   { CKM_AES_CTS                  , "CKM_AES_CTS                  " },
   { CKM_BLOWFISH_KEY_GEN         , "CKM_BLOWFISH_KEY_GEN         " },
   { CKM_BLOWFISH_CBC             , "CKM_BLOWFISH_CBC             " },
   { CKM_TWOFISH_KEY_GEN          , "CKM_TWOFISH_KEY_GEN          " },
   { CKM_TWOFISH_CBC              , "CKM_TWOFISH_CBC              " },
+  { CKM_DES_ECB_ENCRYPT_DATA     , "CKM_DES_ECB_ENCRYPT_DATA     " },
+  { CKM_DES_CBC_ENCRYPT_DATA     , "CKM_DES_CBC_ENCRYPT_DATA     " },
+  { CKM_DES3_ECB_ENCRYPT_DATA    , "CKM_DES3_ECB_ENCRYPT_DATA    " },
+  { CKM_DES3_CBC_ENCRYPT_DATA    , "CKM_DES3_CBC_ENCRYPT_DATA    " },
+  { CKM_AES_ECB_ENCRYPT_DATA     , "CKM_AES_ECB_ENCRYPT_DATA     " },
+  { CKM_AES_CBC_ENCRYPT_DATA     , "CKM_AES_CBC_ENCRYPT_DATA     " },
   { CKM_GOSTR3410_KEY_PAIR_GEN   , "CKM_GOSTR3410_KEY_PAIR_GEN   " },
   { CKM_GOSTR3410                , "CKM_GOSTR3410                " },
   { CKM_GOSTR3410_WITH_GOSTR3411 , "CKM_GOSTR3410_WITH_GOSTR3411 " },
@@ -518,6 +530,7 @@ static enum_specs ck_mec_s[] = {
   { CKM_DSA_PARAMETER_GEN        , "CKM_DSA_PARAMETER_GEN        " },
   { CKM_DH_PKCS_PARAMETER_GEN    , "CKM_DH_PKCS_PARAMETER_GEN    " },
   { CKM_X9_42_DH_PARAMETER_GEN   , "CKM_X9_42_DH_PARAMETER_GEN   " },
+  { CKM_AES_KEY_WRAP             , "CKM_AES_KEY_WRAP             " },
   { CKM_VENDOR_DEFINED           , "CKM_VENDOR_DEFINED           " }
 };
 
@@ -631,6 +644,15 @@ static enum_specs ck_sta_s[] = {
   { CKS_RW_SO_FUNCTIONS,   "CKS_RW_SO_FUNCTIONS" }
 };
 
+static enum_specs ck_ckd_s[] = {
+  { CKD_NULL, "CKD_NULL" },
+  { CKD_SHA1_KDF, "CKD_SHA1_KDF" },
+  { CKD_SHA224_KDF, "CKD_SHA224_KDF" },
+  { CKD_SHA256_KDF, "CKD_SHA256_KDF" },
+  { CKD_SHA384_KDF, "CKD_SHA384_KDF" },
+  { CKD_SHA512_KDF, "CKD_SHA512_KDF" },
+};
+
 #define SZ_SPECS sizeof(enum_specs)
 
 enum_spec ck_types[] = {
@@ -641,6 +663,7 @@ enum_spec ck_types[] = {
   { MGF_T, ck_mgf_s, sizeof(ck_mgf_s) / SZ_SPECS, "CK_RSA_PKCS_MGF_TYPE"},
   { USR_T, ck_usr_s, sizeof(ck_usr_s) / SZ_SPECS, "CK_USER_TYPE"        },
   { STA_T, ck_sta_s, sizeof(ck_sta_s) / SZ_SPECS, "CK_STATE"        },
+  { CKD_T, ck_ckd_s, sizeof(ck_ckd_s) / SZ_SPECS, "CK_EC_KDF_TYPE"      },
   { RV_T,  ck_err_s, sizeof(ck_err_s) / SZ_SPECS, "CK_RV"               },
 };
 
@@ -727,6 +750,20 @@ type_spec ck_attribute_specs[] = {
   { CKA_WRAP_WITH_TRUSTED , "CKA_WRAP_WITH_TRUSTED ", print_generic, NULL },
   { CKA_WRAP_TEMPLATE     , "CKA_WRAP_TEMPLATE    ", print_generic, NULL },
   { CKA_UNWRAP_TEMPLATE   , "CKA_UNWRAP_TEMPLATE  ", print_generic, NULL },
+  { CKA_OTP_FORMAT        , "CKA_OTP_FORMAT       ", print_generic, NULL },
+  { CKA_OTP_LENGTH        , "CKA_OTP_LENGTH       ", print_generic, NULL },
+  { CKA_OTP_TIME_INTERVAL , "CKA_OTP_TIME_INTERVAL ", print_generic, NULL },
+  { CKA_OTP_USER_FRIENDLY_MODE, "CKA_OTP_USER_FRIENDLY_MODE ", print_boolean, NULL },
+  { CKA_OTP_CHALLENGE_REQUIREMENT, "CKA_OTP_CHALLENGE_REQUIREMENT ", print_generic, NULL },
+  { CKA_OTP_TIME_REQUIREMENT, "CKA_OTP_TIME_REQUIREMENT ", print_generic, NULL },
+  { CKA_OTP_COUNTER_REQUIREMENT, "CKA_OTP_COUNTER_REQUIREMENT ", print_generic, NULL },
+  { CKA_OTP_PIN_REQUIREMENT, "CKA_OTP_PIN_REQUIREMENT ", print_generic, NULL },
+  { CKA_OTP_COUNTER       , "CKA_OTP_COUNTER      ", print_generic, NULL },
+  { CKA_OTP_TIME          , "CKA_OTP_TIME         ", print_print, NULL },
+  { CKA_OTP_USER_IDENTIFIER, "CKA_OTP_USER_IDENTIFIER ", print_print, NULL },
+  { CKA_OTP_SERVICE_IDENTIFIER, "CKA_OTP_SERVICE_IDENTIFIER ", print_print, NULL },
+  { CKA_OTP_SERVICE_LOGO  , "CKA_OTP_SERVICE_LOGO ", print_generic, NULL },
+  { CKA_OTP_SERVICE_LOGO_TYPE, "CKA_OTP_SERVICE_LOGO_TYPE ", print_print, NULL },
   { CKA_GOSTR3410_PARAMS  , "CKA_GOSTR3410_PARAMS ", print_generic, NULL },
   { CKA_GOSTR3411_PARAMS  , "CKA_GOSTR3411_PARAMS ", print_generic, NULL },
   { CKA_GOST28147_PARAMS  , "CKA_GOST28147_PARAMS ", print_generic, NULL },

@@ -32,7 +32,11 @@ typedef unsigned char u8;
 #define SC_MAX_CARD_DRIVER_SNAME_SIZE	16
 #define SC_MAX_CARD_APPS		8
 #define SC_MAX_APDU_BUFFER_SIZE		261 /* takes account of: CLA INS P1 P2 Lc [255 byte of data] Le */
+#define SC_MAX_APDU_DATA_SIZE		0xFF
+#define SC_MAX_APDU_RESP_SIZE		(0xFF+1)
 #define SC_MAX_EXT_APDU_BUFFER_SIZE	65538
+#define SC_MAX_EXT_APDU_DATA_SIZE		0xFFFF
+#define SC_MAX_EXT_APDU_RESP_SIZE		(0xFFFF+1)
 #define SC_MAX_PIN_SIZE			256 /* OpenPGP card has 254 max */
 #define SC_MAX_ATR_SIZE			33
 #define SC_MAX_UID_SIZE			10
@@ -48,9 +52,11 @@ typedef unsigned char u8;
 
 /* When changing this value, pay attention to the initialization of the ASN1
  * static variables that use this macro, like, for example,
- * 'c_asn1_supported_algorithms' in src/libopensc/pkcs15.c
+ * 'c_asn1_supported_algorithms' in src/libopensc/pkcs15.c,
+ * src/libopensc/pkcs15-prkey.c and src/libopensc/pkcs15-skey.c
+ * `grep "src/libopensc/types.h SC_MAX_SUPPORTED_ALGORITHMS  defined as"'
  */
-#define SC_MAX_SUPPORTED_ALGORITHMS	8
+#define SC_MAX_SUPPORTED_ALGORITHMS	16
 
 struct sc_lv_data {
 	unsigned char *value;
@@ -205,6 +211,7 @@ typedef struct sc_acl_entry {
 } sc_acl_entry_t;
 
 /* File types */
+#define SC_FILE_TYPE_UNKNOWN		0x00
 #define SC_FILE_TYPE_DF			0x04
 #define SC_FILE_TYPE_INTERNAL_EF	0x03
 #define SC_FILE_TYPE_WORKING_EF		0x01
@@ -237,8 +244,8 @@ typedef struct sc_file {
 	int sid;	/* short EF identifier (1 byte) */
 	struct sc_acl_entry *acl[SC_MAX_AC_OPS]; /* Access Control List */
 
-	int record_length; /* In case of fixed-length or cyclic EF */
-	int record_count;  /* Valid, if not transparent EF or DF */
+	size_t record_length; /* In case of fixed-length or cyclic EF */
+	size_t record_count;  /* Valid, if not transparent EF or DF */
 
 	unsigned char *sec_attr;	/* security data in proprietary format. tag '86' */
 	size_t sec_attr_len;

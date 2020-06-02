@@ -43,7 +43,7 @@ sc_pkcs15_read_data_object(struct sc_pkcs15_card *p15card,
 		const struct sc_pkcs15_data_info *info,
 		struct sc_pkcs15_data **data_object_out)
 {
-        struct sc_context *ctx = p15card->card->ctx;
+	struct sc_context *ctx = p15card->card->ctx;
 	struct sc_pkcs15_data *data_object;
 	struct sc_pkcs15_der der;
 	int r;
@@ -100,8 +100,10 @@ int sc_pkcs15_decode_dodf_entry(struct sc_pkcs15_card *p15card,
 				asn1_data[2];
 	struct sc_asn1_pkcs15_object data_obj = { obj, asn1_com_data_attr, NULL,
 					     asn1_type_data_attr };
-	size_t label_len = sizeof(info.app_label);
+	size_t label_len = sizeof(info.app_label) - 1;
 	int r;
+
+	memset(info.app_label, 0, sizeof(info.app_label));
 
 	sc_copy_asn1_entry(c_asn1_com_data_attr, asn1_com_data_attr);
 	sc_copy_asn1_entry(c_asn1_type_data_attr, asn1_type_data_attr);
@@ -119,9 +121,12 @@ int sc_pkcs15_decode_dodf_entry(struct sc_pkcs15_card *p15card,
 	r = sc_asn1_decode(ctx, asn1_data, *buf, *buflen, buf, buflen);
 	if (r == SC_ERROR_ASN1_END_OF_CONTENTS)
 		return r;
-	SC_TEST_RET(ctx, SC_LOG_DEBUG_NORMAL, r, "ASN.1 decoding failed");
+	LOG_TEST_RET(ctx, r, "ASN.1 decoding failed");
 
-	if (!p15card->app || !p15card->app->ddo.aid.len)   {
+	if (!p15card->app || !p15card->app->ddo.aid.len) {
+		if (!p15card->file_app) {
+			return SC_ERROR_INTERNAL;
+		}
 		r = sc_pkcs15_make_absolute_path(&p15card->file_app->path, &info.path);
 		if (r < 0)
 			return r;
@@ -133,7 +138,7 @@ int sc_pkcs15_decode_dodf_entry(struct sc_pkcs15_card *p15card,
 	obj->type = SC_PKCS15_TYPE_DATA_OBJECT;
 	obj->data = malloc(sizeof(info));
 	if (obj->data == NULL)
-		SC_FUNC_RETURN(ctx, SC_LOG_DEBUG_NORMAL, SC_ERROR_OUT_OF_MEMORY);
+		LOG_FUNC_RETURN(ctx, SC_ERROR_OUT_OF_MEMORY);
 	memcpy(obj->data, &info, sizeof(info));
 
 	return SC_SUCCESS;

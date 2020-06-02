@@ -71,7 +71,9 @@
 
 /* disable asserts */
 #ifndef SIMCLIST_DEBUG
+#ifndef NDEBUG
 #define NDEBUG
+#endif
 #endif
 
 #include <assert.h>
@@ -419,7 +421,7 @@ static simclist_inline struct list_entry_s *list_findpos(const list_t *simclist_
     /* accept 1 slot overflow for fetching head and tail sentinels */
     if (posstart < -1 || posstart > (int)l->numels) return NULL;
 
-    x = (float)(posstart+1) / l->numels;
+    x = l->numels ? (float)(posstart+1) / l->numels : 0;
     if (x <= 0.25) {
         /* first quarter: get to posstart from head */
         for (i = -1, ptr = l->head_sentinel; i < posstart; ptr = ptr->next, i++);
@@ -479,6 +481,9 @@ int list_insert_at(list_t *simclist_restrict l, const void *data, unsigned int p
         size_t datalen = l->attrs.meter(data);
         lent->data = (struct list_entry_s *)malloc(datalen);
         if (lent->data == NULL) {
+            if (!(l->spareelsnum > 0)) {
+                free(lent);
+            }
             return -1;
         }
         memcpy(lent->data, data, datalen);
@@ -763,10 +768,10 @@ int list_concat(const list_t *l1, const list_t *l2, list_t *simclist_restrict de
     err = l2->numels - l1->numels;
     if ((err+1)/2 > 0) {        /* correct pos RIGHT (err-1)/2 moves */
         err = (err+1)/2;
-        for (cnt = 0; cnt < (unsigned int)err; cnt++) dest->mid = dest->mid->next;
+        for (cnt = 0; dest->mid && cnt < (unsigned int)err; cnt++) dest->mid = dest->mid->next;
     } else if (err/2 < 0) { /* correct pos LEFT (err/2)-1 moves */
         err = -err/2;
-        for (cnt = 0; cnt < (unsigned int)err; cnt++) dest->mid = dest->mid->prev;
+        for (cnt = 0; dest->mid && cnt < (unsigned int)err; cnt++) dest->mid = dest->mid->prev;
     }
 
     assert(!(list_repOk(l1) && list_repOk(l2)) || list_repOk(dest));

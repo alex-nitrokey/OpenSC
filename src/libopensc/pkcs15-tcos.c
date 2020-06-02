@@ -33,11 +33,6 @@
 #include "cardctl.h"
 #include "log.h"
 
-int sc_pkcs15emu_tcos_init_ex(
-	sc_pkcs15_card_t   *p15card,
-	struct sc_aid *,
-	sc_pkcs15emu_opt_t *opts);
-
 static int insert_cert(
 	sc_pkcs15_card_t *p15card,
 	const char       *path,
@@ -63,17 +58,17 @@ static int insert_cert(
 	cert_obj.flags = writable ? SC_PKCS15_CO_FLAG_MODIFIABLE : 0;
 
 	if(sc_select_file(card, &cert_info.path, NULL)!=SC_SUCCESS){
-		sc_debug(ctx, SC_LOG_DEBUG_NORMAL,
+		sc_log(ctx, 
 			"Select(%s) failed\n", path);
 		return 1;
 	}
 	if(sc_read_binary(card, 0, cert, sizeof(cert), 0)<0){
-		sc_debug(ctx, SC_LOG_DEBUG_NORMAL,
+		sc_log(ctx, 
 			"ReadBinary(%s) failed\n", path);
 		return 2;
 	}
 	if(cert[0]!=0x30 || cert[1]!=0x82){
-		sc_debug(ctx, SC_LOG_DEBUG_NORMAL,
+		sc_log(ctx, 
 			"Invalid Cert: %02X:%02X:...\n", cert[0], cert[1]);
 		return 3;
 	}
@@ -89,10 +84,10 @@ static int insert_cert(
 
 	r=sc_pkcs15emu_add_x509_cert(p15card, &cert_obj, &cert_info);
 	if(r!=SC_SUCCESS){
-		sc_debug(ctx, SC_LOG_DEBUG_NORMAL, "sc_pkcs15emu_add_x509_cert(%s) failed\n", path);
+		sc_log(ctx,  "sc_pkcs15emu_add_x509_cert(%s) failed\n", path);
 		return 4;
 	}
-	sc_debug(ctx, SC_LOG_DEBUG_NORMAL, "%s: OK, Index=%d, Count=%d\n", path, cert_info.path.index, cert_info.path.count);
+	sc_log(ctx,  "%s: OK, Index=%d, Count=%d\n", path, cert_info.path.index, cert_info.path.count);
 	return 0;
 }
 
@@ -133,12 +128,12 @@ static int insert_key(
 		if(prkey_info.path.len>=2) prkey_info.path.len-=2;
 		sc_append_file_id(&prkey_info.path, 0x5349);
 		if(sc_select_file(card, &prkey_info.path, NULL)!=SC_SUCCESS){
-			sc_debug(ctx, SC_LOG_DEBUG_NORMAL,
+			sc_log(ctx, 
 				"Select(%s) failed\n",
 				sc_print_path(&prkey_info.path));
 			return 1;
 		}
-		sc_debug(ctx, SC_LOG_DEBUG_NORMAL,
+		sc_log(ctx, 
 			"Searching for Key-Ref %02X\n", key_reference);
 		while((r=sc_read_record(card, ++rec_no, buf, sizeof(buf), SC_RECORD_BY_REC_NR))>0){
 			int found=0;
@@ -149,7 +144,7 @@ static int insert_key(
 			if(found) break;
 		}
 		if(r<=0){
-			sc_debug(ctx, SC_LOG_DEBUG_NORMAL,"No EF_KEYD-Record found\n");
+			sc_log(ctx, "No EF_KEYD-Record found\n");
 			return 1;
 		}
 		for(i=0;i<r;i+=2+buf[i+1]){
@@ -159,9 +154,10 @@ static int insert_key(
 	} else {
 		if(sc_select_file(card, &prkey_info.path, &f)!=SC_SUCCESS
 			   	|| !f->prop_attr || f->prop_attr_len < 2){
-			sc_debug(ctx, SC_LOG_DEBUG_NORMAL,
+			sc_log(ctx, 
 				"Select(%s) failed\n",
 				sc_print_path(&prkey_info.path));
+			sc_file_free(f);
 			return 1;
 		}
 		if (f->prop_attr[1] & 0x04) can_crypt=1;
@@ -174,10 +170,10 @@ static int insert_key(
 
 	r=sc_pkcs15emu_add_rsa_prkey(p15card, &prkey_obj, &prkey_info);
 	if(r!=SC_SUCCESS){
-		sc_debug(ctx, SC_LOG_DEBUG_NORMAL, "sc_pkcs15emu_add_rsa_prkey(%s) failed\n", path);
+		sc_log(ctx,  "sc_pkcs15emu_add_rsa_prkey(%s) failed\n", path);
 		return 4;
 	}
-	sc_debug(ctx, SC_LOG_DEBUG_NORMAL, "%s: OK%s%s\n", path, can_sign ? ", Sign" : "", can_crypt ? ", Crypt" : "");
+	sc_log(ctx,  "%s: OK%s%s\n", path, can_sign ? ", Sign" : "", can_crypt ? ", Crypt" : "");
 	return 0;
 }
 
@@ -224,12 +220,12 @@ static int insert_pin(
 		if(pin_info.path.len>=2) pin_info.path.len-=2;
 		sc_append_file_id(&pin_info.path, 0x5049);
 		if(sc_select_file(card, &pin_info.path, NULL)!=SC_SUCCESS){
-			sc_debug(ctx, SC_LOG_DEBUG_NORMAL,
+			sc_log(ctx, 
 				"Select(%s) failed\n",
 				sc_print_path(&pin_info.path));
 			return 1;
 		}
-		sc_debug(ctx, SC_LOG_DEBUG_NORMAL,
+		sc_log(ctx, 
 			"Searching for PIN-Ref %02X\n", pin_reference);
 		while((r=sc_read_record(card, ++rec_no, buf, sizeof(buf), SC_RECORD_BY_REC_NR))>0){
 			int found=0, fbz=-1;
@@ -242,13 +238,13 @@ static int insert_pin(
 			if(found) break;
 		}
 		if(r<=0){
-			sc_debug(ctx, SC_LOG_DEBUG_NORMAL,"No EF_PWDD-Record found\n");
+			sc_log(ctx, "No EF_PWDD-Record found\n");
 			return 1;
 		}
 	} else {
 		if(sc_select_file(card, &pin_info.path, &f)!=SC_SUCCESS
 			   	|| !f->prop_attr || f->prop_attr_len < 4){
-			sc_debug(ctx, SC_LOG_DEBUG_NORMAL,"Select(%s) failed\n", path);
+			sc_log(ctx, "Select(%s) failed\n", path);
 			return 1;
 		}
 		pin_info.tries_left=f->prop_attr[3];
@@ -257,10 +253,10 @@ static int insert_pin(
 
 	r=sc_pkcs15emu_add_pin_obj(p15card, &pin_obj, &pin_info);
 	if(r!=SC_SUCCESS){
-		sc_debug(ctx, SC_LOG_DEBUG_NORMAL, "sc_pkcs15emu_add_pin_obj(%s) failed\n", path);
+		sc_log(ctx,  "sc_pkcs15emu_add_pin_obj(%s) failed\n", path);
 		return 4;
 	}
-	sc_debug(ctx, SC_LOG_DEBUG_NORMAL, "%s: OK, FBZ=%d\n", path, pin_info.tries_left);
+	sc_log(ctx,  "%s: OK, FBZ=%d\n", path, pin_info.tries_left);
 	return 0;
 }
 
@@ -382,8 +378,10 @@ static int detect_idkey(
 	p15card->tokeninfo->label = strdup("IDKey Card");
 
 	insert_cert(p15card, "DF074331", 0x45, 1, "Signatur Zertifikat 1");
-	insert_cert(p15card, "DF074332", 0x45, 1, "Signatur Zertifikat 2");
-	insert_cert(p15card, "DF074333", 0x45, 1, "Signatur Zertifikat 3");
+	insert_cert(p15card, "DF074332", 0x46, 1, "Signatur Zertifikat 2");
+	insert_cert(p15card, "DF074333", 0x47, 1, "Signatur Zertifikat 3");
+	insert_cert(p15card, "DF084331", 0x4B, 1, "Verschluesselungs Zertifikat 1");
+	/* TODO should others come here too? */
 
 	insert_key(p15card, "DF074E03", 0x45, 0x84, 2048, 1, "IDKey1");
 	insert_key(p15card, "DF074E04", 0x46, 0x85, 2048, 1, "IDKey2");
@@ -391,6 +389,7 @@ static int detect_idkey(
 	insert_key(p15card, "DF074E06", 0x48, 0x87, 2048, 1, "IDKey4");
 	insert_key(p15card, "DF074E07", 0x49, 0x88, 2048, 1, "IDKey5");
 	insert_key(p15card, "DF074E08", 0x4A, 0x89, 2048, 1, "IDKey6");
+	insert_key(p15card, "DF084E01", 0x4B, 0x81, 2048, 1, "IDKey7");
 
 	insert_pin(p15card, "5000", 1, 2, 0x00, 6, "PIN",
 		SC_PKCS15_PIN_FLAG_CASE_SENSITIVE | SC_PKCS15_PIN_FLAG_INITIALIZED
@@ -492,28 +491,26 @@ static int detect_unicard(
 
 int sc_pkcs15emu_tcos_init_ex(
 	sc_pkcs15_card_t   *p15card,
-	struct sc_aid *aid,
-	sc_pkcs15emu_opt_t *opts
+	struct sc_aid *aid
 ){
 	sc_card_t         *card = p15card->card;
 	sc_context_t      *ctx = p15card->card->ctx;
 	sc_serial_number_t serialnr;
 	char               serial[30];
-	int i, r;
+	int r;
 
 	/* check if we have the correct card OS unless SC_PKCS15EMU_FLAGS_NO_CHECK */
-	i=(opts && (opts->flags & SC_PKCS15EMU_FLAGS_NO_CHECK));
-	if (!i && card->type!=SC_CARD_TYPE_TCOS_V2 && card->type!=SC_CARD_TYPE_TCOS_V3) return SC_ERROR_WRONG_CARD;
+	if (card->type!=SC_CARD_TYPE_TCOS_V2 && card->type!=SC_CARD_TYPE_TCOS_V3) return SC_ERROR_WRONG_CARD;
 
 	/* get the card serial number */
 	r = sc_card_ctl(card, SC_CARDCTL_GET_SERIALNR, &serialnr);
 	if (r < 0) {
-		sc_debug(ctx, SC_LOG_DEBUG_NORMAL, "unable to get ICCSN\n");
+		sc_log(ctx,  "unable to get ICCSN\n");
 		return SC_ERROR_WRONG_CARD;
 	}
-        sc_bin_to_hex(serialnr.value, serialnr.len , serial, sizeof(serial), 0);
+	sc_bin_to_hex(serialnr.value, serialnr.len , serial, sizeof(serial), 0);
 	serial[19] = '\0';
-        p15card->tokeninfo->serial_number = strdup(serial);
+	p15card->tokeninfo->serial_number = strdup(serial);
 
 	if(!detect_netkey(p15card)) return SC_SUCCESS;
 	if(!detect_idkey(p15card)) return SC_SUCCESS;

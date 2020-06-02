@@ -77,9 +77,9 @@
 					</term>
 					<listitem>
 						<para>
-		  					Specify hash algorithm used with RSA-PKCS-PSS signature or RSA-OAEP decryption.
-          					Allowed values are "SHA-1", "SHA256", "SHA384", "SHA512", and some tokens may 
-          					also allow "SHA224". Default is "SHA-1".
+							Specify hash algorithm used with RSA-PKCS-PSS signature or RSA-OAEP decryption.
+							Allowed values are "SHA-1", "SHA256", "SHA384", "SHA512", and some tokens may 
+							also allow "SHA224". Default is "SHA-1".
 						</para>
 						<para> 
 							Note that the input to RSA-PKCS-PSS has to be of the size equal to
@@ -168,6 +168,13 @@
 						<option>--usage-derive</option>
 					</term>
 					<listitem><para>Specify 'derive' key usage flag (EC only).</para></listitem>
+				</varlistentry>
+
+				<varlistentry>
+					<term>
+						<option>--usage-wrap</option>
+					</term>
+					<listitem><para>Specify 'wrap' key usage flag.</para></listitem>
 				</varlistentry>
 
 				<varlistentry>
@@ -321,6 +328,13 @@
 
 				<varlistentry>
 					<term>
+						<option>--extractable</option>
+					</term>
+					<listitem><para>Set the CKA_EXTRACTABLE attribute (object can be extracted)</para></listitem>
+				</varlistentry>
+
+				<varlistentry>
+					<term>
 						<option>--set-id</option> <replaceable>id</replaceable>,
 						<option>-e</option> <replaceable>id</replaceable>
 					</term>
@@ -398,6 +412,13 @@
 
 				<varlistentry>
 					<term>
+						<option>--object-index</option> <replaceable>index</replaceable>
+					</term>
+					<listitem><para>Specify the index of the object to use.</para></listitem>
+				</varlistentry>
+
+				<varlistentry>
+					<term>
 						<option>--token-label</option> <replaceable>label</replaceable>
 					</term>
 					<listitem><para>Specify the label of token.
@@ -446,6 +467,26 @@
 
 				<varlistentry>
 					<term>
+						<option>--always-auth</option>
+					</term>
+					<listitem><para>Set the CKA_ALWAYS_AUTHENTICATE attribute to a private key object.
+					If set, the user has to supply the PIN for each use (sign or decrypt) with the key.</para>
+					</listitem>
+				</varlistentry>
+
+				<varlistentry>
+					<term>
+						<option>--allowed-mechanisms</option> <replaceable>mechanisms</replaceable>
+					</term>
+					<listitem><para>Sets the CKA_ALLOWED_MECHANISMS attribute
+					to a key objects when importing an object or generating
+					a keys. The argument accepts comma-separated list of
+					algorithmsm, that can be used with the given key.</para>
+					</listitem>
+				</varlistentry>
+
+				<varlistentry>
+					<term>
 						<option>--test-ec</option>
 					</term>
 					<listitem><para>Test EC (best used with the <option>--login</option>
@@ -466,8 +507,9 @@
 						<option>-y</option> <replaceable>type</replaceable>
 					</term>
 					<listitem><para>Specify the type of object to operate on.
-					Examples are <literal>cert</literal>, <literal>privkey</literal>
-					and <literal>pubkey</literal>.</para></listitem>
+					Valid value are <literal>cert</literal>, <literal>privkey</literal>,
+					<literal>pubkey</literal>, <literal>secrkey</literal> 
+					and <literal>data</literal>.</para></listitem>
 				</varlistentry>
 
 				<varlistentry>
@@ -479,6 +521,13 @@
 					OpenSC debugging level! To set OpenSC PKCS#11 module into debug
 					mode, set the <varname>OPENSC_DEBUG</varname> environment variable to a
 					non-zero number.</para></listitem>
+				</varlistentry>
+
+				<varlistentry>
+					<term>
+						<option>--verify</option>,
+					</term>
+					<listitem><para>Verify signature of some data.</para></listitem>
 				</varlistentry>
 
 				<varlistentry>
@@ -532,6 +581,13 @@
 
 				<varlistentry>
 					<term>
+						<option>--signature-file</option> <replaceable>filename</replaceable>
+					</term>
+					<listitem><para>The path to the signature file for signature verification</para></listitem>
+				</varlistentry>
+
+				<varlistentry>
+					<term>
 						<option>--signature-format</option> <replaceable>format</replaceable>
 					</term>
 					<listitem><para>Format for ECDSA signature: 'rs' (default),
@@ -545,7 +601,7 @@
 					</term>
 					<listitem><para>Write a key or certificate object to the token.
 					<replaceable>filename</replaceable> points to the DER-encoded certificate or key file.
-                                        </para></listitem>
+					</para></listitem>
 				</varlistentry>
 
 				<varlistentry>
@@ -553,7 +609,7 @@
 						<option>--generate-random</option> <replaceable>num</replaceable>
 					</term>
 					<listitem><para>Get <replaceable>num</replaceable> bytes of random data.
-                                        </para></listitem>
+					</para></listitem>
 				</varlistentry>
 
 			</variablelist>
@@ -568,7 +624,7 @@
 
 			To read the certificate with ID <replaceable>KEY_ID</replaceable>
 			in DER format from smart card:
-				<programlisting>pkcs11-tool --read-object  --id KEY_ID --type cert --outfile cert.der</programlisting>
+				<programlisting>pkcs11-tool --read-object --id KEY_ID --type cert --output-file cert.der</programlisting>
 
 			To convert the certificate in DER format to PEM format, use OpenSSL
 			tools:

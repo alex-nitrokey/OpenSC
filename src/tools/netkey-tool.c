@@ -27,7 +27,7 @@
 #include <openssl/x509v3.h>
 #include <openssl/pem.h>
 
-#include "common/compat_getopt.h"
+#include <getopt.h>
 #include "libopensc/opensc.h"
 
 static struct {
@@ -446,7 +446,8 @@ int main(
 	int r, oerr=0, reader=0, debug=0, pin_nr=-1, cert_nr=-1;
 	size_t i, newlen=0;
 
-	while((r=getopt_long(argc,argv,"hvr:p:u:0:1:",options,NULL))!=EOF) switch(r){
+	while ((r = getopt_long(argc, argv, "hvr:p:u:0:1:", options, NULL)) != -1) {
+		switch (r) {
 		case 'h': ++do_help; break;
 		case 'v': ++debug; break;
 		case 'r': reader=atoi(optarg); break;
@@ -455,6 +456,7 @@ int main(
 		case '0': set_pin(pinlist[2].value, &pinlist[2].len, optarg); break;
 		case '1': set_pin(pinlist[3].value, &pinlist[3].len, optarg); break;
 		default: ++oerr;
+		}
 	}
 	if(do_help){
 		fprintf(stderr,"This is netkey-tool V1.0, May 15 2005, Copyright Peter Koch <pk_opensc@web.de>\n");
@@ -532,10 +534,6 @@ int main(
 	if(r < 0){
 		fprintf(stderr,"Establish-Context failed: %s\n", sc_strerror(r));
 		exit(1);
-	}
-	if (debug > 1) {
-		ctx->debug = debug;
-		sc_ctx_log_to_file(ctx, "stderr");
 	}
 	if(ctx->debug>0)
 		printf("Context for application \"%s\" created, Debug=%d\n", ctx->app_name, ctx->debug);
